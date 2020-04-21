@@ -1,0 +1,16 @@
+package client.player.commands.ToVoid;
+
+import constants.CommandConstants.CoomandRank;
+
+/**
+ * @author Emilyx3
+ * @author GabrielSin (http://forum.ragezone.com/members/822844.html)
+ */
+
+public class DonorCommand {
+
+    public static CoomandRank getPlayerLevelRequired() {
+        return CoomandRank.GM;
+    }
+
+}

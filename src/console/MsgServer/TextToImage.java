@@ -1,0 +1,96 @@
+package console.MsgServer;
+
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import javax.imageio.ImageIO;
+
+public class TextToImage {//C:\Users\Administrator\Desktop\酷Q Pro\data\image
+
+    private static String _imgPath = "C:\\Users\\Administrator\\Desktop\\酷Q Pro\\data\\image\\tiantipaihangbang\\"; // 酷Q图片目录
+
+    public static void main(String[] args) throws Exception {
+        String text = "----------------- 天梯赛排行榜 -----------------\n"
+                + "第 01 名  积分207  [蓝蜗牛] 星痕\n"
+                + "第 02 名  积分207  [红螃蟹] 公猪丶\n"
+                + "第 03 名  积分207  [蓝蜗牛] 银色战车\n"
+                + "第 04 名  积分207  [蓝蜗牛] Riseasdfadfsdfasdf\n"
+                + "第 05 名  积分206  [蓝蜗牛] 基佬Z\n"
+                + "第 06 名  积分204  [蓝蜗牛] 安神补脑液安神补脑液abc\n"
+                + "第 07 名  积分204  [蓝蜗牛] 残蝉噪晚\n"
+                + "第 08 名  积分203  [小青蛇] 灰灰沉醉\n"
+                + "第 09 名  积分203  [蓝蜗牛] Sylvanas\n"
+                + "第 10 名  积分203  [蓝蜗牛] 胡大宝Zz";
+        createTianTiPaiHangBang(text);
+    }
+
+    public static void createTianTiPaiHangBang(String text) throws Exception {
+        //text += "\n---------------- " + new SimpleDateFormat("yyyyMMdd HH:mm").format(Calendar.getInstance().getTime()) + " ----------------";
+        String[] txtArr = text.split("\n");
+        createImage(txtArr);
+    }
+
+    /**
+     * 根据文本内容生成图片
+     *
+     * @param text
+     * @throws Exception
+     */
+    public static void createImage(String[] txtArr) throws Exception {
+
+        Font _font = new Font("宋体", Font.PLAIN, 12); // 请勿修改为其他字体
+        int lineHeight = _font.getSize() + 4; // 每行的高度
+        int hzCountPerLine = 24; // 每行24个汉字
+        int lineCount = txtArr.length;
+        int imageHeight = lineHeight * lineCount + 4; // 图片的高度
+        int imageWidth = _font.getSize() * hzCountPerLine; // 图片的宽度
+        int charCountPerLine = 2 * hzCountPerLine; // 每行字节数
+
+        List<String> listStr = new ArrayList<>();
+        List<String> newList = new ArrayList<>();
+        for (int h = 0; h < txtArr.length; h++) {
+            listStr.add(txtArr[h]);
+        }
+        for (int j = 0; j < listStr.size(); j++) {
+            if (listStr.get(j).length() > charCountPerLine) {
+                newList.add(listStr.get(j).substring(0, charCountPerLine));
+                listStr.add(j + 1, listStr.get(j).substring(charCountPerLine));
+                listStr.set(j, listStr.get(j).substring(0, charCountPerLine));
+            } else {
+                newList.add(listStr.get(j));
+            }
+        }
+
+        int a = newList.size();
+        int b = lineHeight;
+        int imgNum = a % b == 0 ? (a / b) : (a / b) + 1;
+
+        for (int m = 0; m < imgNum; m++) {
+            String filePath = _imgPath + m + ".jpg";
+            File outFile = new File(filePath);
+
+            // 创建图片
+            BufferedImage image = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_BGR);
+            Graphics g = image.getGraphics();
+            g.setClip(0, 0, imageWidth, imageHeight);
+            g.setColor(Color.white); // 背景色白色
+            g.fillRect(0, 0, imageWidth, imageHeight);
+            g.setColor(Color.black);//  字体颜色黑色
+            g.setFont(_font);// 设置画笔字体
+
+            // 逐行处理
+            for (int i = 0; i < lineHeight; i++) {
+                int index = i + m * lineHeight;
+                if (newList.size() - 1 >= index) {
+                    g.drawString(newList.get(index), 0, lineHeight * (i + 1));
+                }
+            }
+            
+            g.dispose();
+            ImageIO.write(image, "jpg", outFile); // 输出图片
+            image.flush();
+        }
+    }
+}

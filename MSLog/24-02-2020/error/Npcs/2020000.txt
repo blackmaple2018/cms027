@@ -1,0 +1,66 @@
+java.lang.NullPointerException
+	at scripting.npc.NPCScriptManager.start(NPCScriptManager.java:124)
+	at scripting.npc.NPCScriptManager.start(NPCScriptManager.java:34)
+	at handling.channel.handler.NPCHandler.NPCTalk(NPCHandler.java:73)
+	at packet.netty.ChannelHandler.channelRead(ChannelHandler.java:167)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:362)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:348)
+	at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:340)
+	at io.netty.handler.codec.ByteToMessageDecoder.fireChannelRead(ByteToMessageDecoder.java:310)
+	at io.netty.handler.codec.ByteToMessageDecoder.channelRead(ByteToMessageDecoder.java:284)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:362)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:348)
+	at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:340)
+	at io.netty.channel.DefaultChannelPipeline$HeadContext.channelRead(DefaultChannelPipeline.java:1434)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:362)
+	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelRead(AbstractChannelHandlerContext.java:348)
+	at io.netty.channel.DefaultChannelPipeline.fireChannelRead(DefaultChannelPipeline.java:965)
+	at io.netty.channel.nio.AbstractNioByteChannel$NioByteUnsafe.read(AbstractNioByteChannel.java:163)
+	at io.netty.channel.nio.NioEventLoop.processSelectedKey(NioEventLoop.java:647)
+	at io.netty.channel.nio.NioEventLoop.processSelectedKeysOptimized(NioEventLoop.java:582)
+	at io.netty.channel.nio.NioEventLoop.processSelectedKeys(NioEventLoop.java:499)
+	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:461)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:884)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.lang.Thread.run(Unknown Source)
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------
+java.lang.NullPointerException
+
+---------------------------------

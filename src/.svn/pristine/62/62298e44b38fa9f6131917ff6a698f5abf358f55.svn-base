@@ -1,0 +1,787 @@
+/*
+ This file is part of the OdinMS Maple Story Server
+ Copyright (C) 2008 Patrick Huy <patrick.huy@frz.cc> 
+ Matthias Butz <matze@odinms.de>
+ Jan Christian Meyer <vimes@odinms.de>
+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License version 3
+ as published by the Free Software Foundation. You may not use, modify
+ or distribute this program under any other version of the
+ GNU Affero General Public License.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package handling.channel;
+
+import client.Client;
+import client.player.Player;
+import constants.ServerProperties;
+import database.Database;
+import community.MapleParty;
+import community.MaplePartyCharacter;
+import handling.world.CheaterData;
+import handling.world.World;
+import handling.world.service.PartyService;
+import handling.world.worker.ServerMessageWorker;
+import java.io.File;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import launch.Start;
+import packet.creators.PacketCreator;
+import packet.transfer.write.OutPacket;
+import provider.MapleDataProviderFactory;
+import scripting.event.EventScriptManager;
+import server.maps.Field;
+import server.maps.FieldManager;
+import server.maps.object.AbstractMapleFieldObject;
+import server.minirooms.PlayerShop;
+import server.minirooms.PlayerShopItem;
+import server.transitions.Boats;
+import tools.CollectionUtil;
+import tools.Pair;
+import tools.TimerTools.WorldTimer;
+
+public class ChannelServer {
+
+    private final int channel;
+    private final int worldId;
+    private final World world;
+    public int expRate;
+    public int mesoRate;
+    public int dropRate;
+    public int bossDropRate;
+    public int petExpRate;
+    public int mountExpRate;
+    public int questExpRate;
+    public int eventMap = 0;
+    public boolean eventOn = false;
+    private boolean shutdown = false;
+    private boolean finishedShutdown = false;
+    private short port = 7575;
+    private String ip;
+    private String arrayString = "";
+    private PlayerStorage players;
+    private String serverMessage;
+    private EventScriptManager eventSM;
+    private final FieldManager mapFactory;
+    private final Map<Integer, String> names = new LinkedHashMap<>();
+    private final ConcurrentHashMap<Integer, Integer> mostSearchedItem = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedQueue<Integer> topResults = new ConcurrentLinkedQueue<>();
+    /**
+     * ***************************************************
+     */
+    /*                     SERVER MESSAGE                 */
+    private final Map<Integer, Integer> disabledServerMessages = new HashMap<>();
+    private final ReentrantReadWriteLock messageLock = new ReentrantReadWriteLock();
+    private ScheduledFuture<?> srvMessagesSchedule;
+    /**
+     * ***************************************************
+     */
+    private final Map<Integer, PlayerShop> activePlayerShops = new LinkedHashMap<>();
+    private final ReentrantReadWriteLock playerShopLock = new ReentrantReadWriteLock();
+
+    private final Map<Integer, Pair<Integer, Client>> transfers = new HashMap<>();
+    private final ReentrantReadWriteLock transferLock = new ReentrantReadWriteLock();
+
+    public ChannelServer(World world, final int channel) {
+        this.channel = channel;
+        this.world = world;
+        this.worldId = world.getWorldId();
+        this.mapFactory = new FieldManager(null, MapleDataProviderFactory.getDataProvider("Map"), MapleDataProviderFactory.getDataProvider("String"), world.getWorldId(), channel);
+        runStartupConfigurations();
+    }
+
+    public Map<Integer, Pair<Integer, Client>> getTransfers() {
+        return transfers;
+    }
+
+    public ReentrantReadWriteLock getTrantferLock() {
+        return transferLock;
+    }
+
+    public void addClientInTransfer(int channelId, int characterId, Client client) {
+        transferLock.writeLock().lock();
+        try {
+            getTransfers().put(characterId, new Pair<>(channelId, client));
+        } finally {
+            transferLock.writeLock().unlock();
+        }
+    }
+
+    public void removeClientFromTransfer(int characterId) {
+        transferLock.writeLock().lock();
+        try {
+            getTransfers().remove(characterId);
+        } finally {
+            transferLock.writeLock().unlock();
+        }
+    }
+
+    public final void runStartupConfigurations() {
+        try {
+            expRate = ServerProperties.World.EXP;
+            questExpRate = ServerProperties.World.QUEST_EXP;
+            mesoRate = ServerProperties.World.MESO;
+            dropRate = ServerProperties.World.DROP;
+            bossDropRate = ServerProperties.World.BOSS_DROP;
+            petExpRate = ServerProperties.World.PET_EXP;
+            mountExpRate = ServerProperties.World.MOUNT_EXP;
+            serverMessage = ServerProperties.World.SERVER_MESSAGE;
+            eventSM = new EventScriptManager(this, ServerProperties.Channel.EVENTS.split(","));
+            port = Short.parseShort(String.valueOf(worldId * 100 + ServerProperties.Channel.PORT + channel));
+        } catch (NumberFormatException e) {
+            throw new RuntimeException(e);
+        }
+        ip = ServerProperties.World.HOST + ":" + port;
+        players = new PlayerStorage(worldId, channel);
+        loadSearchedItems();
+        srvMessagesSchedule = WorldTimer.getInstance().register(new ServerMessageWorker(this), 10 * 1000, 10 * 1000);
+        eventSM.init();
+    }
+
+    public static final void startChannelMain() {
+        for (int i = 0; i < ServerProperties.Channel.COUNT; i++) {
+            //newInstance(i + 1).runStartupConfigurations();
+        }
+    }
+
+    public int getWorldId() {
+        return worldId;
+    }
+
+    public World getWorld() {
+        return world;
+    }
+
+    public short getPort() {
+        return port;
+    }
+
+    public final void setShutdown() {
+        this.shutdown = true;
+        saveSearchedItems();
+        System.out.println("频道 " + channel + " 已设置为关闭，并将关闭雇佣商户。");
+    }
+
+    public final void setFinishShutdown() {
+        this.finishedShutdown = true;
+        System.out.println("频道 " + channel + " 已经关闭。");
+    }
+
+    public final boolean hasFinishedShutdown() {
+        return finishedShutdown;
+    }
+
+    public void registerPlayerShop(PlayerShop ps) {
+        playerShopLock.writeLock().lock();
+        try {
+            activePlayerShops.put(ps.getOwner().getId(), ps);
+        } finally {
+            playerShopLock.writeLock().unlock();
+        }
+    }
+
+    public void unregisterPlayerShop(PlayerShop ps) {
+        playerShopLock.writeLock().lock();
+        try {
+            activePlayerShops.remove(ps.getOwner().getId());
+        } finally {
+            playerShopLock.writeLock().unlock();
+        }
+    }
+
+    public List<PlayerShop> getActivePlayerShops() {
+        List<PlayerShop> psList = new ArrayList<>();
+        playerShopLock.readLock().lock();
+        try {
+            for (PlayerShop mps : activePlayerShops.values()) {
+                psList.add(mps);
+            }
+
+            return psList;
+        } finally {
+            playerShopLock.readLock().unlock();
+        }
+    }
+
+    public PlayerShop getPlayerShop(int ownerid) {
+        playerShopLock.readLock().lock();
+        try {
+            return activePlayerShops.get(ownerid);
+        } finally {
+            playerShopLock.readLock().unlock();
+        }
+    }
+
+    public void resetDisabledServerMessages() {
+        messageLock.writeLock().lock();
+        try {
+            disabledServerMessages.clear();
+        } finally {
+            messageLock.writeLock().unlock();
+        }
+    }
+
+    public boolean registerDisabledServerMessage(int chrid) {
+        messageLock.writeLock().lock();
+        try {
+            boolean alreadyDisabled = disabledServerMessages.containsKey(chrid);
+            disabledServerMessages.put(chrid, 0);
+
+            return alreadyDisabled;
+        } finally {
+            messageLock.writeLock().unlock();
+        }
+    }
+
+    public boolean unregisterDisabledServerMessage(int chrid) {
+        messageLock.writeLock().lock();
+        try {
+            return disabledServerMessages.remove(chrid) != null;
+        } finally {
+            messageLock.writeLock().unlock();
+        }
+    }
+
+    public void runDisabledServerMessagesSchedule() {
+        List<Integer> toRemove = new LinkedList<>();
+
+        messageLock.writeLock().lock();
+        try {
+            for (Map.Entry<Integer, Integer> dsm : disabledServerMessages.entrySet()) {
+                int b = dsm.getValue();
+                if (b >= 4) {
+                    toRemove.add(dsm.getKey());
+                } else {
+                    disabledServerMessages.put(dsm.getKey(), ++b);
+                }
+            }
+
+            for (Integer chrid : toRemove) {
+                disabledServerMessages.remove(chrid);
+            }
+        } finally {
+            messageLock.writeLock().unlock();
+        }
+
+        if (!toRemove.isEmpty()) {
+            for (Integer chrid : toRemove) {
+                Player p = players.getCharacterById(chrid);
+
+                if (p != null) {
+                    p.announce(PacketCreator.ServerMessage(serverMessage));
+                }
+            }
+        }
+    }
+
+    /**
+     * <航班>
+     */
+    public void loadTransitions() {
+        try {
+            //AirPlane airPlane = new AirPlane();
+            //airPlane.Start(channel);
+
+            Boats boats = new Boats(this);
+            boats.Start();
+
+            /*Cabin cabine = new Cabin();
+             cabine.Start(channel);
+
+             Elevator elevator = new Elevator();
+             elevator.Start(channel);
+
+             Genie genie = new Genie();
+             genie.Start(channel);
+
+             Subway subway = new Subway();
+             subway.Start(channel);
+
+             Trains trains = new Trains();
+             trains.Start(channel);*/
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public EventScriptManager getEventSM() {
+        return eventSM;
+    }
+
+    public void reloadEvents() {
+        eventSM.cancel();
+        eventSM = null;
+        eventSM = new EventScriptManager(this, getEvents());
+        eventSM.init();
+    }
+
+    private static String[] getEvents() {
+        List<String> events = new ArrayList<>();
+        for (File file : new File(System.getProperty("user.dir") + "/Script/event").listFiles()) {
+            events.add(file.getName().substring(0, file.getName().length() - 3));
+        }
+        return events.toArray(new String[0]);
+    }
+
+    public void removeMapPartyMembers(int partyid) {
+        MapleParty party = PartyService.getParty(partyid);
+        if (party == null) {
+            return;
+        }
+
+        for (MaplePartyCharacter mpc : party.getMembers()) {
+            Player mc = mpc.getPlayer();
+            if (mc != null) {
+                Field map = mc.getMap();
+                if (map != null) {
+                    map.removeParty(partyid);
+                }
+            }
+        }
+    }
+
+    public List<Player> getPartyMembers(MapleParty party) {
+        List<Player> partym = new ArrayList<>(8);
+        for (MaplePartyCharacter partychar : party.getMembers()) {
+            if (partychar.getChannel() == getChannel()) {
+                Player chr = getPlayerStorage().getCharacterByName(partychar.getName());
+                if (chr != null) {
+                    partym.add(chr);
+                }
+            }
+        }
+        return partym;
+    }
+
+    public boolean isConnected(String name) {
+        return getPlayerStorage().getCharacterByName(name) != null;
+    }
+
+    public String getCharacterName(int charId) {
+        if (names.get(charId) != null) {
+            return names.get(charId);
+        }
+        for (Player mc : getPlayerStorage().getAllCharacters()) {
+            if (mc.getId() == charId) {
+                names.put(charId, mc.getName());
+                return mc.getName();
+            }
+        }
+        Connection con = null;
+        try {
+            con = Start.getInstance().getConnection();
+            try (PreparedStatement ps = con.prepareStatement("SELECT * FROM characters WHERE id = ? AND world = ?")) {
+                ps.setInt(1, charId);
+                ps.setInt(2, worldId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        String name = rs.getString("name");
+                        names.put(charId, name);
+                        return name;
+                    }
+                }
+            }
+        } catch (SQLException err) {
+            return "SQL Error: " + err;
+        } finally {
+            Database.cleanUP(null, null, con);
+        }
+        return "No user";
+    }
+
+    public int find(String name) {
+        int c = -1;
+        Player chr = getPlayerStorage().getCharacterByName(name);
+        if (chr != null) {
+            c = chr.getClient().getChannel();
+        }
+        return c;
+    }
+
+    public void broadcastMessage(OutPacket message) {
+        broadcastPacket(message);
+    }
+
+    public void broadcastMessagekg(OutPacket message) {
+        broadcastPacketkg(message);
+    }
+
+    public final void broadcastPacketkg(final OutPacket data) {
+        for (Player chr : players.getAllCharacters()) {
+            if (chr.switch_qunltkx() == 0) {
+                chr.announce(data);
+            }
+        }
+    }
+
+    public void broadcastSmega(OutPacket message) {
+        broadcastSmegaPacket(message);
+    }
+
+    public void broadcastGMMessage(OutPacket message) {
+        broadcastGMPacket(message);
+    }
+
+    public final void broadcastPacket(final OutPacket data) {
+        for (Player chr : players.getAllCharacters()) {
+            chr.announce(data);
+        }
+    }
+
+    public final void broadcastSmegaPacket(final OutPacket data) {
+        for (Player chr : players.getAllCharacters()) {
+            if (chr.getSmegaEnabled()) {
+                chr.announce(data);
+            }
+        }
+    }
+
+    public final void broadcastGMPacket(final OutPacket data) {
+        for (Player chr : players.getAllCharacters()) {
+            if (chr.isGameMaster()) {
+                chr.announce(data);
+            }
+        }
+    }
+
+    public void broadcastYellowMessage(String msg) {
+        for (Player mc : getPlayerStorage().getAllCharacters()) {
+            mc.announce(PacketCreator.SendYellowTip(msg));
+        }
+    }
+
+    public void worldMessage(String msg) {
+        for (Player mc : getPlayerStorage().getAllCharacters()) {
+            mc.dropMessage(msg);
+        }
+    }
+
+    public List<CheaterData> getCheaters() {
+        List<CheaterData> cheaters = getPlayerStorage().getCheaters();
+
+        Collections.sort(cheaters);
+        return CollectionUtil.copyFirst(cheaters, 20);
+    }
+
+    public final void shutdown() {
+        if (finishedShutdown) {
+            return;
+        }
+
+        if (srvMessagesSchedule != null) {
+            srvMessagesSchedule.cancel(false);
+            srvMessagesSchedule = null;
+        }
+
+        broadcastPacket(PacketCreator.ServerNotice(0, "This channel will now shut down."));
+        shutdown = true;
+
+        System.out.println("Channel " + channel + ", saving characters...");
+        getPlayerStorage().disconnectAll();
+        setFinishShutdown();
+    }
+
+    public FieldManager getMapFactory() {
+        return mapFactory;
+    }
+
+    /**
+     * <黄色顶端公告> @param p
+     */
+    public final void addPlayer(final Player p) {
+        getPlayerStorage().registerPlayer(p);
+        broadcastPacket(PacketCreator.ServerMessage(serverMessage));
+    }
+
+    public final void removePlayer(final Player chr) {
+        getPlayerStorage().deregisterPlayer(chr);
+    }
+
+    public final void removePlayer(final int idz, final String namez) {
+        getPlayerStorage().deregisterPlayer(idz, namez);
+    }
+
+    public final PlayerStorage getPlayerStorage() {
+        if (players == null) {
+            players = new PlayerStorage(worldId, channel);
+        }
+        return players;
+    }
+
+    public int getConnectedClients() {
+        return getPlayerStorage().getAllCharacters().size();
+    }
+
+    public String getServerMessage() {
+        return serverMessage;
+    }
+
+    public void setServerMessage(String newMessage) {
+        serverMessage = newMessage;
+        broadcastPacket(PacketCreator.ServerMessage(serverMessage));
+        resetDisabledServerMessages();
+    }
+
+    public String getArrayString() {
+        return arrayString;
+    }
+
+    public void setArrayString(String newStr) {
+        arrayString = newStr;
+    }
+
+    public int getChannel() {
+        return channel;
+    }
+
+    public String getIP() {
+        return ip;
+    }
+
+    public boolean isShutdown() {
+        return shutdown;
+    }
+
+    public boolean getEventStarted() {
+        return eventOn;
+    }
+
+    public void setEvent(boolean set) {
+        this.eventOn = set;
+    }
+
+    public int getEventMap() {
+        return eventMap;
+    }
+
+    public void setEventMap(int map) {
+        this.eventMap = map;
+    }
+
+    public int getLoadedMaps() {
+        return mapFactory.getLoadedMapSize();
+    }
+
+    public int getExpRate() {
+        return expRate;
+    }
+
+    public void setExpRate(int expRate) {
+        this.expRate = expRate;
+    }
+
+    public int getQuestRate() {
+        return questExpRate;
+    }
+
+    public void setQuestRate(int QuestExpRate) {
+        this.questExpRate = QuestExpRate;
+    }
+
+    public int getMesoRate() {
+        return mesoRate;
+    }
+
+    public void setMesoRate(int mesoRate) {
+        this.mesoRate = mesoRate;
+    }
+
+    public int getDropRate() {
+        return dropRate;
+    }
+
+    public void setDropRate(int dropRate) {
+        this.dropRate = dropRate;
+    }
+
+    public int getBossDropRate() {
+        return bossDropRate;
+    }
+
+    public void setBossDropRate(int bossdropRate) {
+        this.bossDropRate = bossdropRate;
+    }
+
+    public int getPetExpRate() {
+        return petExpRate;
+    }
+
+    public void setPetExpRate(int petExpRate) {
+        this.petExpRate = petExpRate;
+    }
+
+    public int getMountRate() {
+        return mountExpRate;
+    }
+
+    public void setMountRate(int mountExpRate) {
+        this.mountExpRate = mountExpRate;
+    }
+
+    public Set<Map.Entry<Integer, Integer>> getMostSearchedItem() {
+        return mostSearchedItem.entrySet();
+    }
+
+    public ConcurrentLinkedQueue<Integer> retrieveTopResults() {
+        return topResults;
+    }
+
+    public void checkSearchedItems(int itemId) {
+        loadSearchedItems();
+        if (!mostSearchedItem.contains(itemId)) {
+            mostSearchedItem.put(itemId, 1);
+            insertSearchedItem(itemId);
+        } else {
+            int count = mostSearchedItem.get(itemId);
+            mostSearchedItem.put(itemId, count++);
+        }
+        updateTopItemSearchResults();
+    }
+
+    public void updateTopItemSearchResults() {
+        topResults.clear();
+        ArrayList<Map.Entry<Integer, Integer>> entries = new ArrayList<>(mostSearchedItem.entrySet());
+        Collections.sort(entries, (o1, o2) -> {
+            Map.Entry<Integer, Integer> entry1 = o1;
+            Map.Entry<Integer, Integer> entry2 = o2;
+            if (entry1.getValue() > entry2.getValue()) {
+                return -1;
+            }
+            if (entry1.getValue() < entry2.getValue()) {
+                return 1;
+            }
+            return 0;
+        });
+        int i = 0;
+        for (Map.Entry<Integer, Integer> item : entries) {
+            int itemId = item.getKey();
+            topResults.add(itemId);
+            i++;
+            if (i == 9) {
+                break;
+            }
+        }
+    }
+
+    public void loadSearchedItems() {
+        Connection con = null;
+        try {
+            con = Start.getInstance().getConnection();
+            try (PreparedStatement ps = con.prepareStatement("SELECT * FROM topresults WHERE world = ?")) {
+                ps.setInt(1, 1); // Todo world
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        int itemid = rs.getInt("itemid");
+                        int count = rs.getInt("count");
+                        mostSearchedItem.put(itemid, count);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println(e);
+        } finally {
+            try {
+                if (con != null && !con.isClosed()) {
+                    con.close();
+                }
+
+            } catch (SQLException e) {
+            }
+        }
+    }
+
+    public void saveSearchedItems() {
+        Connection con = null;
+        try {
+            con = Start.getInstance().getConnection();
+            try (PreparedStatement ps = con.prepareStatement("UPDATE topresults SET count = ? WHERE world = ? and itemid = ?")) {
+                for (Map.Entry<Integer, Integer> itemSearched : mostSearchedItem.entrySet()) {
+                    ps.setInt(1, itemSearched.getValue());
+                    ps.setInt(2, 1);  // Todo world
+                    ps.setInt(3, itemSearched.getKey());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        } catch (SQLException e) {
+            System.err.println(e);
+        } finally {
+            try {
+                if (con != null && !con.isClosed()) {
+                    con.close();
+                }
+
+            } catch (SQLException e) {
+            }
+        }
+    }
+
+    public void insertSearchedItem(int itemId) {
+        Connection con = null;
+        try {
+            con = Start.getInstance().getConnection();
+            try (PreparedStatement ps = con.prepareStatement("INSERT INTO topresults (itemid, count, world) VALUES (?, ?, ?)")) {
+                ps.setInt(1, itemId);
+                ps.setInt(2, 1);
+                ps.setInt(3, 1); // Todo world
+                ps.executeUpdate();
+                ps.close();
+            }
+        } catch (SQLException e) {
+            System.err.println(e);
+        } finally {
+            try {
+                if (con != null && !con.isClosed()) {
+                    con.close();
+                }
+
+            } catch (SQLException e) {
+            }
+        }
+    }
+
+    public void reloadEventScriptManager() {
+        eventSM.cancel();
+        eventSM = null;
+        eventSM = new EventScriptManager(this, getEvents());
+        eventSM.init();
+    }
+
+    public List<Pair<PlayerShopItem, AbstractMapleFieldObject>> getAvailableItemBundles(int itemid) {
+        List<Pair<PlayerShopItem, AbstractMapleFieldObject>> hmsAvailable = new ArrayList<>();
+        for (PlayerShop ps : getActivePlayerShops()) {
+            List<PlayerShopItem> itemBundles = ps.sendAvailableBundles(itemid);
+
+            for (PlayerShopItem mpsi : itemBundles) {
+                hmsAvailable.add(new Pair<>(mpsi, (AbstractMapleFieldObject) ps));
+            }
+        }
+
+        Collections.sort(hmsAvailable, (Pair<PlayerShopItem, AbstractMapleFieldObject> p1, Pair<PlayerShopItem, AbstractMapleFieldObject> p2) -> p1.getLeft().getPrice() - p2.getLeft().getPrice());
+
+        hmsAvailable.subList(0, Math.min(hmsAvailable.size(), 200));
+        return hmsAvailable;
+    }
+}

@@ -1,0 +1,192 @@
+package client.player.commands;
+
+import client.player.Player;
+import client.player.PlayerJob;
+import client.player.PlayerStat;
+import handling.world.service.BroadcastService;
+import packet.creators.PacketCreator;
+import server.maps.Field;
+import server.maps.portal.Portal;
+import tools.TimerTools.WorldTimer;
+
+/**
+ * @author wl
+ */
+public class GMCommands {
+
+    @Command(names = {"等级", "level"}, requiredlevel = CommandLevel.GameMaster)
+    public static class Level extends GMCommand {
+
+        public static void execute(Player player, String[] args) {
+            player.setLevel(Short.parseShort(args[1]));
+            player.levelUp(false);
+            player.setExp(0);
+            player.getStat().updateSingleStat(PlayerStat.EXP, 0);
+        }
+    }
+
+    @Command(names = {"升级", "levelup", "sj"}, requiredlevel = CommandLevel.GameMaster)
+    public static class LevelUp extends GMCommand {
+
+        public static void execute(Player player, String[] args) {
+            player.levelUp(true);
+            player.setExp(0);
+            player.getStat().updateSingleStat(PlayerStat.EXP, 0);
+        }
+    }
+
+    @Command(names = {"转职", "zz", "job"}, requiredlevel = CommandLevel.GameMaster)
+    public static class Job extends GMCommand {
+
+        public static void execute(Player player, String[] args) {
+            int jobId = Integer.parseInt(args[1]);
+            if (PlayerJob.getById(jobId) != null) {
+                player.changeJob(PlayerJob.getById(jobId));
+            } else {
+                player.dropMessage("不存在的职业.");
+            }
+        }
+    }
+
+    @Command(names = {"传送", "cs", "warp"}, requiredlevel = CommandLevel.GameMaster)
+    public static class Warp extends GMCommand {
+
+        public static void execute(Player player, String[] args) {
+            try {
+                Field target = player.getChannelServer().getMapFactory().getMap(Integer.parseInt(args[1]));
+                if (target == null) {
+                    player.dropMessage(1, "地图不存在。");
+                    return;
+                }
+                if (player.getMapId() >= 910000000 && player.getMapId() <= 910000022) {
+                    player.dropMessage(1, "市场不允许传送到其他地图。");
+                    return;
+                }
+                if (player.getMapId() < 910000000 || player.getMapId() > 910000022) {
+                    if (Integer.parseInt(args[1]) >= 910000000 && Integer.parseInt(args[1]) <= 910000022) {
+                        player.dropMessage(1, "不允许传送到自由市场地图。");
+                        return;
+                    }
+                }
+                Portal targetPortal = null;
+                if (args.length > 2) {
+                    try {
+                        targetPortal = target.getPortal(Integer.parseInt(args[2]));
+                    } catch (IndexOutOfBoundsException e) {
+                        player.dropMessage(5, "传送点错误.");
+                    } catch (NumberFormatException a) {
+                    }
+                }
+                if (targetPortal == null) {
+                    targetPortal = target.getPortal(0);
+                }
+                player.changeMap(target, targetPortal);
+            } catch (Exception e) {
+                player.dropMessage(5, "Error: " + e.getMessage());
+            }
+        }
+    }
+
+    @Command(names = {"封号", "ban"}, requiredlevel = CommandLevel.GameMaster)
+    public static class Ban extends GMCommand {
+
+        public static void execute(Player player, String[] args) {
+            if (args.length < 2) {
+                player.dropMessage("参数: !封号 <角色名称> <封号原因>");
+                return;
+            }
+            String name = args[1];
+            String reason = args[2];
+
+            Player target = player.getWorld().getCharByName(name);
+            if (target != null) {
+                target.bans(reason);
+                target.dropMessage(1, String.format("你因违反游戏规定：%s，被管理员：%s执行封号处理，如有疑问请立即联系在线管理。", reason, player.getName()));
+                BroadcastService.broadcastMessage(player.getWorldId(), PacketCreator.ServerMessage(6, "[封号]: 玩家 " + target.getName() + " 因 " + reason + " 违反游戏规定，被封号处理。"));
+                WorldTimer.getInstance().schedule(() -> {
+                    target.getClient().disconnect(false, false);
+                }, 5000); 
+            }
+        }
+    }
+
+    /*public static CoomandRank getPlayerLevelRequired() {
+        return CoomandRank.GM;
+    }
+    public static class d extends Drop {
+    }
+
+    public static class 丢 extends Drop {
+    }
+
+    public static class Drop extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            final int itemId = Integer.parseInt(splitted[1]);
+            final short quantity = (short) CommandProcessorUtil.getOptionalIntArg(splitted, 2, 1);
+            ItemInformationProvider ii = ItemInformationProvider.getInstance();
+            if (c.getPlayer().getGM() > 3) {
+                if (ItemConstants.isPet(itemId)) {
+                    c.getPlayer().dropMessage(5, "请从现金商店购买宠物。");
+                } else if (!ii.itemExists(itemId)) {
+                    c.getPlayer().dropMessage(5, itemId + " 物品不存在。");
+                } else {
+                    Item toDrop;
+                    if (ItemConstants.getInventoryType(itemId) == InventoryType.EQUIP) {
+                        toDrop = ii.randomizeStats((Equip) ii.getEquipById(itemId));
+                    } else {
+                        toDrop = new Item(itemId, (byte) 0, (short) quantity, (byte) 0);
+                    }
+                    c.getPlayer().getMap().spawnItemDrop(c.getPlayer(), c.getPlayer(), toDrop, c.getPlayer().getPosition(), true, true);
+                }
+            } else {
+                c.getPlayer().dropMessage(1, "没有权限。");
+            }
+            return true;
+        }
+    }*/
+
+ /*public static class zhgw extends Spawn {
+    }
+
+    public static class 召唤怪物 extends Spawn {
+    }
+
+    public static class Spawn extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            if (splitted.length < 2) {
+                c.getPlayer().yellowMessage("*召唤怪物 <mobid>");
+                return false;
+            }
+            if (c.getPlayer().getGM() > 3) {
+                MapleMonster monster = MapleLifeFactory.getMonster(Integer.parseInt(splitted[1]));
+                if (monster == null) {
+                    c.getPlayer().yellowMessage("怪物不存在。");
+                    return false;
+                }
+                if (splitted.length > 2) {
+                    for (int i = 0; i < Integer.parseInt(splitted[2]); i++) {
+                        c.getPlayer().getMap().spawnMonsterOnGroundBelow(MapleLifeFactory.getMonster(Integer.parseInt(splitted[1])), c.getPlayer().getPosition());
+                    }
+                } else {
+                    c.getPlayer().getMap().spawnMonsterOnGroundBelow(MapleLifeFactory.getMonster(Integer.parseInt(splitted[1])), c.getPlayer().getPosition());
+                }
+            } else {
+                c.getPlayer().dropMessage(1, "没有权限。");
+            }
+            return true;
+        }
+    }*/
+
+ /* public static class 召唤扎昆 extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            c.getPlayer().getMap().spawnZakum(c.getPlayer().getPosition());
+            return true;
+        }
+    }*/
+}

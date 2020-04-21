@@ -1,0 +1,17 @@
+package tools.test;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import launch.Start;
+
+public class Sql {
+    public static void main(String[] args) {
+        Connection c = Start.getInstance().getConnection();
+        try {
+            PreparedStatement ps = c.prepareStatement("");
+        } catch (SQLException ex) {
+            
+        }
+    }
+}

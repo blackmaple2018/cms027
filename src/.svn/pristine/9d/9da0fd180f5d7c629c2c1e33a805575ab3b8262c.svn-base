@@ -1,0 +1,164 @@
+package handling.world.service;
+
+import handling.channel.ChannelServer;
+import handling.world.messenger.MapleMessenger;
+import handling.world.messenger.MapleMessengerCharacter;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import packet.creators.PacketCreator;
+import client.player.Player;
+
+public class MessengerService {
+
+    private static final Map<Integer, MapleMessenger> messengers = new HashMap<>();
+    private static final AtomicInteger runMessengerId = new AtomicInteger();
+
+    static {
+        runMessengerId.set(1);
+    }
+
+    public static MapleMessenger createMessenger(MapleMessengerCharacter chrfor) {
+        int messengerid = runMessengerId.getAndIncrement();
+        MapleMessenger messenger = new MapleMessenger(messengerid, chrfor);
+        messengers.put(messenger.getId(), messenger);
+        return messenger;
+    }
+
+    public static void declineChat(Player player, String target, String namefrom) {
+        int ch = FindService.findChannel(target, player.getWorldId());
+        if (ch > 0) {
+            ChannelServer cs = player.getWorld().getChannelById(ch);
+            Player p = cs.getPlayerStorage().getCharacterByName(target);
+            if (p != null) {
+                MapleMessenger messenger = p.getMessenger();
+                if (messenger != null) {
+                    p.getClient().write(PacketCreator.MessengerNote(namefrom, 5, 0));
+                }
+            }
+        }
+    }
+
+    public static MapleMessenger getMessenger(int messengerid) {
+        return messengers.get(messengerid);
+    }
+
+    public static void leaveMessenger(Player player, int messengerid, MapleMessengerCharacter target) {
+        MapleMessenger messenger = getMessenger(messengerid);
+        if (messenger == null) {
+            throw new IllegalArgumentException("No messenger with the specified messengerid exists");
+        }
+        int position = messenger.getPositionByName(target.getName());
+        messenger.removeMember(target);
+
+        messenger.getMembers().stream().filter((mmc) -> (mmc != null)).forEachOrdered((mmc) -> {
+            int ch = FindService.findChannel(mmc.getId(), player.getWorldId());
+            System.out.println("leaveMessenger + " + ch);
+            if (ch > 0) {
+                Player chr = player.getWorld().getChannelById(ch).getPlayerStorage().getCharacterByName(mmc.getName());
+                if (chr != null) {
+                    chr.getClient().write(PacketCreator.RemoveMessengerPlayer(position));
+                }
+            }
+        });
+    }
+
+    public static void silentLeaveMessenger(int messengerid, MapleMessengerCharacter target) {
+        MapleMessenger messenger = getMessenger(messengerid);
+        if (messenger == null) {
+            throw new IllegalArgumentException("No messenger with the specified messengerid exists");
+        }
+        messenger.silentRemoveMember(target);
+    }
+
+    public static void silentJoinMessenger(int messengerid, MapleMessengerCharacter target) {
+        MapleMessenger messenger = getMessenger(messengerid);
+        if (messenger == null) {
+            throw new IllegalArgumentException("No messenger with the specified messengerid exists");
+        }
+        messenger.silentAddMember(target);
+    }
+
+    public static void updateMessenger(Player player, int messengerid, String namefrom, int fromchannel) {
+        MapleMessenger messenger = getMessenger(messengerid);
+        int position = messenger.getPositionByName(namefrom);
+
+        messenger.getMembers().stream().filter((messengerchar) -> (messengerchar != null && !messengerchar.getName().equals(namefrom))).forEachOrdered((messengerchar) -> {
+            int ch = FindService.findChannel(messengerchar.getName(), player.getWorldId());
+            if (ch > 0) {
+                Player chr = player.getWorld().getChannelById(ch).getPlayerStorage().getCharacterByName(messengerchar.getName());
+                if (chr != null) {
+                    Player from = player.getWorld().getChannelById(fromchannel).getPlayerStorage().getCharacterByName(namefrom);
+                    chr.getClient().write(PacketCreator.UpdateMessengerPlayer(namefrom, from, position, fromchannel - 1));
+                }
+            }
+        });
+    }
+
+    public static void joinMessenger(Player player, int messengerid, MapleMessengerCharacter target, String from, int fromchannel) {
+        MapleMessenger messenger = getMessenger(messengerid);
+        if (messenger == null) {
+            throw new IllegalArgumentException("No messenger with the specified messengerid exists");
+        }
+        messenger.addMember(target);
+        int position = messenger.getPositionByName(target.getName());
+        messenger.getMembers().stream().filter((messengerchar) -> (messengerchar != null)).forEachOrdered((messengerchar) -> {
+            int mposition = messenger.getPositionByName(messengerchar.getName());
+            int ch = FindService.findChannel(messengerchar.getName(), player.getWorldId());
+            if (ch > 0) {
+                Player p = player.getWorld().getChannelById(ch).getPlayerStorage().getCharacterByName(messengerchar.getName());
+                if (p != null) {
+                    if (!messengerchar.getName().equals(from)) {
+                        Player fromCh = player.getWorld().getChannelById(fromchannel).getPlayerStorage().getCharacterByName(from);
+                        p.getClient().write(PacketCreator.AddMessengerPlayer(from, fromCh, position, fromchannel - 1));
+                        fromCh.getClient().write(PacketCreator.AddMessengerPlayer(p.getName(), p, mposition, messengerchar.getChannel() - 1));
+                    } else {
+                        p.getClient().write(PacketCreator.JoinMessenger(mposition));
+                    }
+                }
+            }
+        });
+    }
+
+    public static void messengerChat(Player player, int messengerId, String chatText, String nameFrom) {
+        MapleMessenger messenger = getMessenger(messengerId);
+        if (messenger == null) {
+            throw new IllegalArgumentException("No messenger with the specified messengerid exists");
+        }
+
+        messenger.getMembers().forEach((messengerchar) -> {
+            if (messengerchar != null && !messengerchar.getName().equals(nameFrom)) {
+                int ch = FindService.findChannel(messengerchar.getName(), player.getWorldId());
+                if (ch > 0) {
+                    Player p = player.getWorld().getChannelById(ch).getPlayerStorage().getCharacterByName(messengerchar.getName());
+                    if (p != null) {
+                        p.getClient().write(PacketCreator.MessengerChat(chatText));
+                    }
+                }
+            } else if (messengerchar != null) {
+                int ch = FindService.findChannel(messengerchar.getName(), player.getWorldId());
+                if (ch > 0) {
+                    Player chr = player.getWorld().getChannelById(ch).getPlayerStorage().getCharacterByName(messengerchar.getName());
+                }
+            }
+        });
+    }
+
+    public static void messengerInvite(Player player, String sender, int messengerId, String target, int fromChannel, boolean gm) {
+        int ch = FindService.findChannel(target, player.getWorldId());
+        if (ch > 0) {
+            Player from = player.getWorld().getChannelById(fromChannel).getPlayerStorage().getCharacterByName(sender);
+            Player targeter = player.getWorld().getChannelById(ch).getPlayerStorage().getCharacterByName(target);
+            if (targeter != null && targeter.getMessenger() == null) {
+                if (!targeter.isGameMaster() || gm) {
+                    targeter.getClient().write(PacketCreator.MessengerInvite(sender, messengerId));
+                    from.getClient().write(PacketCreator.MessengerNote(target, 4, 1));
+                } else {
+                    from.getClient().write(PacketCreator.MessengerNote(target, 4, 0));
+                }
+            } else {
+                from.getClient().write(PacketCreator.MessengerChat(sender + " : " + target + " is already using Maple Messenger"));
+            }
+        }
+    }
+}

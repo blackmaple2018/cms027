@@ -1,0 +1,37 @@
+log4j.rootLogger=info,stdout,file
+log4j.logger.com.endeca=ERROR
+# Logger for crawl metrics
+log4j.logger.com.endeca.itl.web.metrics=INFO
+
+log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+log4j.appender.stdout.layout.ConversionPattern=[%p] %m%n
+
+log4j.appender.file = org.apache.log4j.FileAppender
+log4j.appender.file.File = C:/error.log
+log4j.appender.file.Encoding=UTF-8
+log4j.appender.file.name = fileLogDemo
+log4j.appender.file.Threshold=ERROR
+log4j.appender.file.layout=org.apache.log4j.PatternLayout
+log4j.appender.file.layout.ConversionPattern=%-d{yyyy-MM-dd HH:mm:ss}[ %p ]%m%n
+log4j.appender.file.append = true
+
+# add a FileAppender to the logger fout
+log4j.appender.fout=org.apache.log4j.FileAppender
+# create a log file
+log4j.appender.fout.File=root.log
+log4j.appender.fout.layout=org.apache.log4j.PatternLayout
+# use a more detailed message pattern
+log4j.appender.fout.layout.ConversionPattern=%p\t%d{ISO8601}\t%r\t%c\t[%t]\t%m%n
+# library logging only for errors
+#log4j.logger.org.hibernate=error
+log4j.logger.io.netty=error
+
+#log4j.logger.org.hibernate.SQL=info
+#log4j.logger.org.hibernate.type=TRACE
+#log4j.logger.org.hibernate.hql.ast.AST=info
+#log4j.logger.org.hibernate.tool.hbm2ddl=warn
+#log4j.logger.org.hibernate.hql=info
+#log4j.logger.org.hibernate.cache=info
+#log4j.logger.org.hibernate.jdbc=debug
+

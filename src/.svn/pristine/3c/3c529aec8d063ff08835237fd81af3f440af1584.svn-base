@@ -1,0 +1,106 @@
+package handling.channel.handler;
+
+import static handling.channel.handler.ChannelHeaders.MovementHeaders.*;
+import packet.transfer.read.InPacket;
+import java.awt.Point;
+import java.util.ArrayList;
+import java.util.List;
+import server.life.MapleMonster;
+import server.movement.*;
+import server.maps.object.AnimatedMapleFieldObject;
+
+public class MovementParse {
+
+    /**
+     * <玩家移动>
+     * @param packet
+     * @return 
+     */
+    public static final List<LifeMovementFragment> parseMovement(final InPacket packet) {
+        final List<LifeMovementFragment> res = new ArrayList<>();
+        //02 00 [BC 07] [8B 01] [C2 FF] [00 00] [52 00] 03 [0D 01] [00] [89 07] [8B 01] [C2 FF] [00 00] [51 00] [03] [2B 03] 00
+        int numCommands = packet.readByte();
+        for (int i = 0; i < numCommands; i++) {
+            int command = packet.readByte();
+            switch (command) {
+                //正常_移动
+                case NORMAL_MOVE:
+                case NORMAL_MOVE_2: {
+                    Point pos = packet.readPos();
+                    Point wobble = packet.readPos();
+                    final int fh = packet.readShort();
+                    byte moveAction = packet.readByte();
+                    short duration = packet.readShort();
+                    AbsoluteLifeMovement alm = new AbsoluteLifeMovement(command, pos, duration, moveAction);
+                    alm.setFh(fh);
+                    alm.setPixelsPerSecond(wobble);
+                    res.add(alm);
+                    break;
+                }
+                //跳跃
+                case JUMP_M:
+                //跳转和击退
+                case JUMP_AND_KNOCKBACK:
+                //闪跳
+                case FLASH_JUMP: {
+                    Point wobble = packet.readPos();
+                    byte moveAction = packet.readByte();
+                    short duration = packet.readShort();
+                    RelativeLifeMovement rlm = new RelativeLifeMovement(command, wobble, duration, moveAction);
+                    rlm.setPixelsPerSecond(wobble);
+                    res.add(rlm);
+                    break;
+                }
+                
+                case IMMEDIATE:
+                case TELEPORT:
+                case ASSAULTER: {
+                    Point pos = packet.readPos();
+                    int fh = packet.readShort();
+                    byte moveAction = packet.readByte();
+                    short duration = packet.readShort();
+                    TeleportMovement tm = new TeleportMovement(command, pos, moveAction, duration);
+                    tm.setFh(fh);
+                    res.add(tm);
+                    break;
+                }
+                case EQUIP_M: {
+                    res.add(new ChangeEquipSpecialAwesome(packet.readByte()));
+                    break;
+                }
+                default: {
+                    byte action = packet.readByte();
+                    short duraction = packet.readShort();
+                    res.add(new BaseActionMovement(command, duraction, action));
+                    break;
+                }
+            }
+        }
+        if (numCommands != res.size()) {
+            System.out.println("移动解析异常。");
+            return null;
+        }
+        return res;
+    }
+
+    public static void updatePosition(final List<LifeMovementFragment> movement, final AnimatedMapleFieldObject target, final int yoffset) {
+        if (movement == null || target == null) {
+            return;
+        }
+        for (final LifeMovementFragment move : movement) {
+            if (move instanceof LifeMovement) {
+                if (move instanceof AbsoluteLifeMovement) {
+                    final Point position = ((LifeMovement) move).getPosition();
+                    //position.y += yoffset;
+                    target.setPosition(position);
+                    int fh = ((AbsoluteLifeMovement) move).getFh();
+                    if (target instanceof MapleMonster) {
+                        ((MapleMonster) target).setPosition(position);
+                        ((MapleMonster) target).setFh(fh);
+                    }
+                }
+                target.setStance(((LifeMovement) move).getNewstate());
+            }
+        }
+    }
+}

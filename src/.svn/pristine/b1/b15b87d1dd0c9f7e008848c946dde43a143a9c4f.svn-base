@@ -1,0 +1,71 @@
+package packet.netty;
+
+import handling.channel.ChannelServer;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import java.net.InetSocketAddress;
+import org.apache.log4j.LogManager;
+
+public class ChannelAcceptor {
+
+    private EventLoopGroup bossGroup, workerGroup;
+    private final InetSocketAddress addr;
+    private Channel channel;
+    private final int channelId;
+    private static final org.apache.log4j.Logger log = LogManager.getRootLogger();
+
+    public ChannelAcceptor(InetSocketAddress addr, int channelId) {
+        this.channelId = channelId;
+        this.addr = addr;
+    }
+
+    public void start() {
+        try {
+            bossGroup = new NioEventLoopGroup(1);
+            workerGroup = new NioEventLoopGroup();
+
+            channel = new ServerBootstrap().group(bossGroup, workerGroup)
+                    .channel(NioServerSocketChannel.class)
+                    .childHandler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel ch) throws Exception {
+                            ch.pipeline().addLast(new PacketDecoder(), new ChannelHandler(), new PacketEncoder());
+                        }
+                    })
+                    .option(ChannelOption.SO_BACKLOG, 200)
+                    //.option(ChannelOption.ALLOCATOR, new PooledByteBufAllocator(true))
+                    .childOption(ChannelOption.TCP_NODELAY, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .bind(addr).syncUninterruptibly().channel().closeFuture().channel();
+
+            log.info(String.format("[频道服务器] %d 监听端口 %d", getChannelId(), getPort()));
+        } catch (Exception ex) {
+            ex.printStackTrace(System.err);
+        }
+    }
+
+    public short getPort() {
+        return (short) this.addr.getPort();
+    }
+
+    public int getChannelId() {
+        return channelId;
+    }
+
+    public void terminate() {
+        try {
+            channel.close();
+        } finally {
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
+        }
+    }
+}

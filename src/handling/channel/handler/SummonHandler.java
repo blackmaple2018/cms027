@@ -1,0 +1,145 @@
+package handling.channel.handler;
+
+import client.player.Player;
+import client.Client;
+import client.player.buffs.BuffStat;
+import security.violation.CheatingOffense;
+import constants.GameConstants;
+import static handling.channel.handler.MovementParse.parseMovement;
+import static handling.channel.handler.MovementParse.updatePosition;
+import packet.transfer.read.InPacket;
+import java.awt.Point;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import packet.creators.PacketCreator;
+import server.life.MapleMonster;
+import server.maps.Field;
+import server.maps.MapleSummon;
+import server.maps.SummonMovementType;
+import server.maps.object.FieldObjectType;
+import server.movement.LifeMovementFragment;
+
+/**
+ *
+ * @author GabrielSin
+ */
+public class SummonHandler {
+
+    public static class SummonAttackEntry {
+
+        private final int damage;
+        private final int mobObjectId;
+
+        public SummonAttackEntry(int mob, int damage) {
+            super();
+            this.mobObjectId = mob;
+            this.damage = damage;
+        }
+
+        public int getMob() {
+            return mobObjectId;
+        }
+
+        public int getDamage() {
+            return damage;
+        }
+    }
+    
+    public static void DamageSummon(InPacket packet, Client c) {
+        int summonEntId = packet.readInt();
+
+        Player p = c.getPlayer();
+        MapleSummon puppet = (MapleSummon) p.getMap().getMapObject(summonEntId, FieldObjectType.SUMMON);
+
+        if (puppet != null) {
+            int misc = packet.readByte();
+            int damage = packet.readInt();
+            
+            int mobEid = 0, isLeft = 0;
+            MapleMonster monster = null;
+            if (misc > -2) {
+                mobEid = packet.readInt();
+                isLeft = packet.readByte();  
+                
+                monster = p.getMap().getMonsterById(mobEid);
+            }
+            
+            if (puppet.hurt(damage)) {
+                p.cancelEffectFromBuffStat(BuffStat.Puppet);
+            }
+            
+
+            if (GameConstants.USE_DEBUG) System.out.println("isPuppet: " + puppet.isPuppet() + " | damage: " + damage + " | action: " + misc + " | mobEid: " + mobEid + "  | skill: " + puppet.getSkill() + " | objecId: " + summonEntId);
+
+            p.getMap().broadcastMessage(PacketCreator.DamageSummon(p.getId(), puppet.getObjectId(), (byte) 12, damage, monster.getId(), isLeft));
+
+        } 	
+
+    }
+
+    public static void MoveSummon(InPacket packet, Client c) {
+        Player p = c.getPlayer();
+        int skillid = packet.readInt();
+        Point startPos = packet.readPos();
+        
+        List<LifeMovementFragment> mov = parseMovement(packet);
+        Collection<MapleSummon> summons = p.getSummons().values();
+        MapleSummon summon = null;
+        for (MapleSummon sum : summons) {
+            if (sum.getSkill() == skillid) {
+                summon = sum;
+                break;
+            }
+        } 
+        if (summon != null) {
+            updatePosition(mov, summon, 0);
+            if (summon.getSkill() == skillid && summon.getMovementType() != SummonMovementType.STATIONARY) {
+                p.getMap().broadcastMessage(p, PacketCreator.MoveSummon(p.getId(), skillid, startPos, mov));
+            }
+        } 
+    }
+
+    public static void SummonAttack(InPacket packet, Client c) {
+        Player p = c.getPlayer();
+        //53 [5E 43 23 00] [03] [6A 00 00 00] 06 00 00 6E 04 D7 00 6C 04 D7 00 F4 01 5B 06 00 00 06 04 DF 00
+        //53 [5E 43 23 00] [03] [6B 00 00 00] 06 00 01 E9 03 D7 00 E8 03 D7 00 F4 01 E1 05 00 00 CF 03 E6 00
+        
+        final int skillid = packet.readInt();
+        final Field map = p.getMap();
+        
+        if (!p.isAlive() || p.getMap() == null) {
+            return;
+        }
+        
+        MapleSummon summon = p.getSummons().values().stream().filter(x -> x.getSkill() == skillid).findFirst().orElse(null);
+
+        if (summon == null) {
+            return;
+        }
+        
+        final byte direction = packet.readByte();
+        List<SummonAttackEntry> allDamage = new ArrayList<>();
+        for (int x = 0; x < 1; x++) {
+            final int mob = packet.readInt();
+            packet.skip(13);
+            int damage = packet.readInt();
+            allDamage.add(new SummonAttackEntry(mob, damage));
+        }
+        
+        if (!p.isAlive()) {
+            p.getCheatTracker().registerOffense(CheatingOffense.ATTACKING_WHILE_DEAD);
+            return;
+        }
+        
+        p.getMap().broadcastMessage(p, PacketCreator.SummonAttack(p.getId(), skillid, direction, allDamage, p.getLevel()));
+      
+        allDamage.forEach((attackEntry) -> {
+            int damage = attackEntry.getDamage();
+            MapleMonster target = map.getMonsterByOid(attackEntry.getMob());
+            if (target != null) {
+                map.damageMonster(p, target, damage);
+            }
+        });
+    }
+}

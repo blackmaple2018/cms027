@@ -1,0 +1,217 @@
+package packet.opcode;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public enum InHeader {
+    PONG(13),
+    // LOGIN
+    LOGIN_PASSWORD(1),
+    SET_GENDER(2),
+    SERVERLIST_REQUEST(-1),
+    SERVERSTATUS_REQUEST(3),
+    CHARLIST_REQUEST(4),
+    CHAR_SELECT(5),
+    AFTER_LOGIN(-1),
+    SERVERLIST_REREQUEST(-1),
+    ACCEPT_TOS(-1),
+    CHECK_CHAR_NAME(7),
+    CREATE_CHAR(11),
+    DELETE_CHAR(12),
+    
+    RELOG(-1),
+
+    VIEW_ALL_CHAR(-1),
+    PICK_ALL_CHAR(-1),
+    CLIENT_ERROR(14),
+
+    // CHANNEL
+    PLAYER_LOGGEDIN(6),
+    STRANGE_DATA(18),
+    CHANGE_MAP(21),
+    CHANGE_CHANNEL(22),
+    ENTER_CASH_SHOP(23),
+    MOVE_PLAYER(24),
+    CHAIR(25),
+    MELEE_ATTACK(26),
+    RANGED_ATTACK(27),
+    MAGIC_ATTACK(28),
+    TAKE_DAMAGE(30),
+    GENERAL_CHAT(31),
+    FACE_EXPRESSION(32),
+    NPC_TALK(35),
+    NPC_TALK_MORE(36),
+    NPC_SHOP(37),
+    STORAGE(38),
+    ITEM_MOVE(39),
+    USE_ITEM(40),
+    USE_SUMMON_BAG(41),
+    PET_FOOD(42),
+    USE_CASH_ITEM(43),
+    USE_RETURN_SCROLL(44),
+    USE_UPGRADE_SCROLL(45),
+    DISTRIBUTE_AP(46),
+    HEAL_OVER_TIME(47),
+    DISTRIBUTE_SP(48),
+    SPECIAL_MOVE(49),
+    CANCEL_BUFF(50),
+    SKILL_EFFECT(51),
+    MESO_DROP(52),
+    GIVE_FAME(53),
+    CHAR_INFO_REQUEST(55),
+    SPAWN_PET(56),
+    CHANGE_MAP_SPECIAL(58),
+    TROCK_ADD_MAP(59),
+    PARTYCHAT(63),
+    WHISPER(64),
+    MESSENGER(65),
+    PLAYER_INTERACTION(66),
+    PARTY_OPERATION(67),
+    DENY_PARTY_REQUEST(68),
+    BUDDYLIST_MODIFY(71),
+    NOTE_ACTION(72),
+    USE_DOOR(73),
+    MOVE_PET(76),
+    PET_CHAT(77),
+    PET_COMMAND(78),
+    PET_LOOT(79),
+    MOVE_SUMMON(82),
+    SUMMON_ATTACK(83),
+    DAMAGE_SUMMON(84),
+    MOVE_LIFE(90),
+    MOB_APPLY_CONTROL(91),
+    NPC_ACTION(95),
+    ITEM_PICKUP(99),
+    TOUCHING_CS(114),
+    BUY_CS_ITEM(115),
+    COUPON_CODE(116),
+    
+    
+    
+    USE_INNER_PORTAL(-1),
+    ITEM_GATHER(-1),
+    ITEM_SORT(-1),
+    
+    QUEST_ACTION(-1),
+    USE_SCRIPTED_ITEM(-1),
+    
+    
+    CANCEL_ITEM_EFFECT(-1),
+    CHANGE_KEYMAP(-1),
+    
+    
+    
+    
+    
+    ENTER_MTS(-1),
+    
+    ENTERED_SHIP_MAP(-1),
+    USE_ITEMEFFECT(-1),
+    USE_CHAIR_ITEM(-1),
+    
+    DAMAGE_REACTOR(-1),
+    GUILD_OPERATION(-1),
+    DENY_GUILD_REQUEST(-1),
+    BBS_OPERATION(-1),
+
+    
+    
+    REGISTER_PIN(-1),
+    AUTO_AGGRO(-1),
+    MOB_DAMAGE_MOB(-1),
+    MONSTER_BOMB(-1),
+    CANCEL_DEBUFF(-1),
+    USE_SKILL_BOOK(-1),
+    SKILL_MACRO(-1),
+    
+    MAPLETV(-1),
+    ENABLE_ACTION(-1),
+    USE_CATCH_ITEM(-1),
+    USE_MOUNT_FOOD(-1),
+    CLOSE_CHALKBOARD(-1),
+    DUEY_ACTION(-1),
+    MONSTER_CARNIVAL(-1),
+    RPS_ACTION(-1),
+    RING_ACTION(-1),
+    PASSIVE_ENERGY(-1),
+    SPOUSE_CHAT(-1),
+    REPORT_PLAYER(-1),
+    GRENADE(-1),
+    UNSTUCK(-1),
+    MTS_OP(-1),
+    UNKNOWN(-1),
+    ALLIANCE_OPERATION(-1),
+    PET_AUTO_POT(-1),
+    PET_ITEM_IGNORE (-1),
+    SILVER_BOX(-1), 
+    HIRED_MERCHANT_REQUEST(-1),
+    FREDRICK_REQUEST(-1),
+    OWL_ACTION(-1),
+    OWL_WARP(-1),
+    LOGGED_OUT(-1);
+ 
+    private short code = -2;
+
+    InHeader(int code) {
+        this.code = (short) code;
+    }
+    
+    public static String getOpcodeName(int value) {
+        for (OutHeader opcode : OutHeader.values()) {
+            if (opcode.getValue() == value) {
+                return opcode.name();
+            }
+        }
+        return "UNKNOWN";
+    }
+
+    public short getValue() {
+        return code;
+    }
+    
+    private final static Map<Short, InHeader> opToHeaderMap = new HashMap<>();
+
+    static {
+        for (InHeader ih : values()) {
+            opToHeaderMap.put(ih.getValue(), ih);
+        }
+    }
+    
+    private static final List<InHeader> spam = Arrays.asList(
+            MOVE_LIFE,
+            PONG,
+            MOVE_PLAYER,
+            SPECIAL_MOVE,
+            MOVE_SUMMON,
+            MOVE_PET,
+            QUEST_ACTION,
+            HEAL_OVER_TIME,
+            CHANGE_KEYMAP,
+            USE_INNER_PORTAL,
+            NPC_ACTION,
+            STRANGE_DATA,
+            MELEE_ATTACK,
+            RANGED_ATTACK,
+            MAGIC_ATTACK,
+            USE_ITEM,
+            NPC_TALK,
+            GENERAL_CHAT,
+            TAKE_DAMAGE,
+            NPC_TALK_MORE,
+            ITEM_PICKUP,
+            PET_LOOT,
+            ITEM_MOVE,
+            ENTER_CASH_SHOP,
+            LOGIN_PASSWORD
+    );
+    
+    public static boolean isSpamHeader(InHeader inHeader) {
+        return spam.contains(inHeader);
+    }
+    
+    public static InHeader getInHeaderByOp(int op) {
+        return opToHeaderMap.getOrDefault((short) op, null);
+    }
+}

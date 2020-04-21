@@ -1,0 +1,209 @@
+package client.player.commands;
+
+import client.Client;
+import constants.CommandConstants.CoomandRank;
+import packet.creators.PacketCreator;
+import client.player.Player;
+import client.player.commands.object.CommandExecute;
+import java.util.ArrayList;
+import java.util.List;
+import scripting.npc.NPCScriptManager;
+import static security.jiance.写入检测;
+import server.life.MapleMonster;
+import server.life.npc.MapleNPC;
+import server.maps.Field;
+import server.maps.object.FieldObject;
+import server.maps.object.FieldObjectType;
+
+/**
+ * @author Emilyx3
+ * @author GabrielSin (http://forum.ragezone.com/members/822844.html)
+ */
+public class PlayerCommand {
+
+    public static CoomandRank getPlayerLevelRequired() {
+        return CoomandRank.NORMAL;
+    }
+
+    public static class qkjnd extends 清空技能点 {
+    }
+
+    public static class 清空技能点 extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            final Player p = c.getPlayer();
+            p.getStat().gainSp(-p.getStat().getRemainingSp());
+            p.dropMessage(5, "清空技能点。");
+            return true;
+        }
+    }
+
+    public static class jk extends enableAction {
+    }
+
+    public static class 解卡 extends enableAction {
+    }
+
+    public static class enableAction extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            final Player p = c.getPlayer();
+            NPCScriptManager.getInstance().dispose(c);
+            c.write(PacketCreator.EnableActions());
+            p.dropMessage(5, "解卡成功，请跟管理员反馈怎么假死的。");
+            return true;
+        }
+    }
+
+    public static class bz extends Commands {
+    }
+
+    public static class help extends Commands {
+    }
+
+    public static class Commands extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            final Player p = c.getPlayer();
+            p.dropMessage(5, "@jk/解卡 - 即可解除假死");
+            return true;
+        }
+    }
+
+    public static class cz extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            写入检测();
+            return true;
+        }
+    }
+
+    public static class 掉落 extends Drops {
+    }
+
+    public static class dl extends Drops {
+    }
+
+    public static class 爆物 extends Drops {
+    }
+
+    public static class bw extends Drops {
+    }
+
+    public static class Drops extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            NPCScriptManager.getInstance().dispose(c);
+            NPCScriptManager.getInstance().start(c, 9900000, 51);
+            return true;
+        }
+    }
+
+    public static class 改名 extends name {
+    }
+
+    public static class 更名 extends name {
+    }
+
+    public static class name extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            NPCScriptManager.getInstance().dispose(c);
+            NPCScriptManager.getInstance().start(c, 9900000, 52);
+            return true;
+        }
+    }
+
+    public static class 伤害 extends sh {
+    }
+
+    public static class sh extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            NPCScriptManager.getInstance().dispose(c);
+            NPCScriptManager.getInstance().start(c, 9900000, 53);
+            return true;
+        }
+    }
+
+    public static class 存档 extends cd {
+    }
+
+    public static class cd extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            final Player p = c.getPlayer();
+            p.saveDatabase();
+            p.dropMessage(5, "存档成功。");
+            return true;
+        }
+    }
+
+    public static class xg extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] splitted) {
+            final Player p = c.getPlayer();
+            for (final FieldObject mmo : c.getPlayer().getMap().getAllMonsters()) {
+                final MapleMonster monster = (MapleMonster) mmo;
+                //c.getPlayer().getMap().broadcastMessage(Field.moveMonster(false, -1, 0, 0, 0, 0, monster.getObjectId(), monster.getPosition(), c.getPlayer().getPosition(), 0));
+                p.getMap().moveMonster(monster, c.getPlayer().getPosition());
+                p.getCheatTracker().checkMoveMonster(c.getPlayer().getPosition());
+                //monster.setPosition(c.getPlayer().getPosition());
+            }
+            p.dropMessage(5, "xigua。");
+            return true;
+        }
+    }
+
+    public static class showPosition extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] args) {
+            c.getPlayer().dropMessage(c.getPlayer().getPosition().toString());
+            return true;
+        }
+    }
+
+    public static class checkObjects extends CommandExecute {
+
+        @Override
+        public boolean execute(Client c, String[] agrs) {
+            Player p = c.getPlayer();
+            StringBuilder sb = new StringBuilder();
+            sb.append("Player in Map: ").append(p.getMapId()).append("\n");
+            List<Integer> npcId = new ArrayList<>();
+            List<FieldObject> objects = new ArrayList<>();
+            for (MapleNPC n : p.getMap().getAllNpcThreadsafe()) {
+                npcId.add(n.getId());
+                objects.add(n);
+                sb.append("Npc: ").append(n.getId()).append(" Position: ").append(n.getPosition().toString()).append(" Fh: ").append(n.getFh()).append("\n");
+            }
+            sb.append("\n").append("All Npcs in Map: ").append("\n");
+            Field f = p.getChannelServer().getMapFactory().getMap(p.getMapId());
+            for (FieldObject object : f.getMapObjects(FieldObjectType.NPC)) {
+                if (object instanceof MapleNPC) {
+                    MapleNPC n = (MapleNPC) object;
+                    sb.append("Npc: ").append(n.getId()).append(" Position: ").append(n.getPosition().toString()).append(" Fh: ").append(n.getFh()).append("\n");
+                }
+            }
+            sb.append("\n").append("Check Npcs is incorrect Field").append("\n");
+            for (Integer npc : npcId) {
+                sb.append("containsNPC: ").append(f.containsNPC(npc)).append("\n");
+            }
+            sb.append("\n").append("Check Npcs is incorrect VisibleMapObject").append("\n");
+            for (FieldObject object : objects) {
+                sb.append("isMapObjectVisible: ").append(p.isMapObjectVisible(object)).append("\n");
+            }
+            return true;
+        }
+    }
+}

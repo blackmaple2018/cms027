@@ -1,0 +1,290 @@
+/**
+ * Ellin Baseado em um servidor GMS-Like na v.62
+ */
+package client.player;
+
+import client.player.inventory.types.InventoryType;
+import client.player.inventory.Item;
+import client.player.inventory.ItemFactory;
+import client.player.inventory.ItemPet;
+import client.player.skills.PlayerSkillEntry;
+import client.player.skills.PlayerSkillFactory;
+import community.MapleBuddyList;
+import community.MapleParty;
+import constants.MapConstants;
+import handling.world.service.PartyService;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import server.maps.FieldManager;
+import server.maps.SavedLocationType;
+import server.maps.portal.Portal;
+import tools.Pair;
+
+public class PlayerFactory {
+
+    /**
+     * <载入角色数据>
+     */
+    public static ResultSet loadingCharacterStats(Player ret, ResultSet rs, Connection con) {
+        try {
+            if (!rs.next()) {
+                rs.close();
+                throw new RuntimeException("Loading char failed (not found)");
+            }
+            ret.主播 = rs.getInt("zhubo");
+            if (rs.getInt("zhubo") > 0) {
+                ret.name = "[主播]" + rs.getString("name");
+            } else {
+                ret.name = rs.getString("name");
+            }
+            ret.level = rs.getInt("level");
+            ret.pop = rs.getInt("fame");
+            ret.stats.str = rs.getInt("str");
+            ret.stats.dex = rs.getInt("dex");
+            ret.stats.int_ = rs.getInt("inte");
+            ret.stats.luk = rs.getInt("luk");
+            ret.exp.set(rs.getInt("exp"));
+            if (rs.getInt("hp") == 0) {
+                ret.stats.hp = 50;
+            } else {
+                ret.stats.hp = rs.getInt("hp");
+            }
+            ret.stats.maxHP = rs.getInt("maxhp");
+            ret.stats.mp = rs.getInt("mp");
+            ret.stats.maxMP = rs.getInt("maxmp");
+            ret.stats.hpApUsed = rs.getInt("hpApUsed");
+            ret.stats.mpApUsed = rs.getInt("mpApUsed");
+            ret.stats.hpMpApUsed = rs.getInt("hpMpUsed");
+            ret.stats.remainingSp = rs.getInt("sp");
+            ret.stats.remainingAp = rs.getInt("ap");
+            ret.meso.set(rs.getInt("meso"));
+            ret.gm = rs.getInt("gm");
+            ret.skin = PlayerSkin.getById(rs.getInt("skincolor"));
+            ret.gender = rs.getInt("gender");
+            ret.job = PlayerJob.getById(rs.getInt("job"));
+            ret.partner = rs.getInt("spouseId");
+            ret.hair = rs.getInt("hair");
+            ret.eyes = rs.getInt("face");
+            ret.accountid = rs.getInt("accountid");
+            ret.mapId = rs.getInt("map");
+            ret.savedSpawnPoint = rs.getInt("spawnpoint");
+            ret.world = rs.getInt("world");
+            ret.worldRanking = rs.getInt("rank");
+            ret.worldRankingChange = rs.getInt("rankMove");
+            ret.jobRanking = rs.getInt("jobRank");
+            ret.jobRankingChange = rs.getInt("jobRankMove");
+            ret.buddyList = new MapleBuddyList(rs.getByte("buddyCapacity"));
+            ret.petAutoHP = rs.getInt("autoHpPot");
+            ret.petAutoMP = rs.getInt("autoMpPot");
+
+            ret.getInventory(InventoryType.EQUIP).setSlotLimit(rs.getByte("equipslots"));
+            ret.getInventory(InventoryType.USE).setSlotLimit(rs.getByte("useslots"));
+            ret.getInventory(InventoryType.SETUP).setSlotLimit(rs.getByte("setupslots"));
+            ret.getInventory(InventoryType.ETC).setSlotLimit(rs.getByte("etcslots"));
+
+            ret.playtime = rs.getLong("playtime");
+            ret.playtimeStart = Calendar.getInstance().getTimeInMillis();
+            ret.dataString = rs.getString("dataString");
+            ret.ariantPoints = rs.getInt("ariantPoints");
+            ret.omokWins = rs.getInt("omokwins");
+            ret.omokLosses = rs.getInt("omoklosses");
+            ret.omokTies = rs.getInt("omokties");
+            ret.matchCardWins = rs.getInt("matchcardwins");
+            ret.matchCardLosses = rs.getInt("matchcardlosses");
+            ret.matchCardTies = rs.getInt("matchcardties");
+            ret.杀怪数量 = rs.getInt("KillMonster");
+            ret.所有附魔技能 = rs.getInt("tianti");
+            ret.setRecoveryHP(rs.getInt("RecoveryHP"));
+            ret.setRecoveryMP(rs.getInt("RecoveryMP"));
+            ret.setRecoveryHPitemid(rs.getInt("RecoveryHPitemid"));
+            ret.setRecoveryMPitemid(rs.getInt("RecoveryMPitemid"));
+            ret.set泡点经验(rs.getInt("paodianexp"));
+            ret.set泡点金币(rs.getInt("paodianjinbi"));
+            ret.set泡点点券(rs.getInt("paodiandianquan"));
+            ret.setMaxlevel(rs.getInt("maxlevel"));
+            ret.setTodayOnlineTime(rs.getInt("todayOnlineTime"));
+            ret.setTotalOnlineTime(rs.getInt("totalOnlineTime"));
+            ret.setTotalOnlineTimett(rs.getInt("totalOnlineTimett"));
+            ret.拜师(rs.getInt("master"));
+            ret.主界面(rs.getInt("zhujiemian"));
+            ret.switch_bufftime(rs.getInt("switch_bufftime"));
+            ret.switch_zhubosx(rs.getInt("switch_zhubosx"));
+            ret.switch_qunltkx(rs.getInt("switch_qunltkx"));
+            ret.switch_skill(rs.getInt("switch_skill"));
+            ret.switch_duanzao(rs.getInt("switch_duanzao"));
+            ret.市场传送点(rs.getInt("mapid"));
+            ret.set角色泡点经验(rs.getInt("pdexp"));
+            return rs;
+        } catch (RuntimeException | SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static void loadingCharacterItems(Player ret, boolean channelserver) {
+        try {
+            for (Pair<Item, InventoryType> mit : ItemFactory.INVENTORY.loadItems(ret.getId(), false)) {
+                ret.getInventory(mit.getRight()).addFromDB(mit.getLeft());
+                Item item = mit.getLeft();
+                if (item.getUniqueId() > -1) {
+                    ItemPet pet = item.getPet();
+                    if (pet != null && pet.getSummoned()) {
+                        ret.addPet(mit.getLeft().getPet());
+                    }
+                    continue;
+                }
+                if (mit.getLeft().getRing() != null) {
+                    ret.addRingToCache(mit.getLeft().getRing().getRingDatabaseId());
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void loadingCharacterIntoGame(Player ret, boolean channelserver, ResultSet rs) {
+        try {
+            if (channelserver) {
+                FieldManager mapFactory = ret.getChannelServer().getMapFactory();
+                ret.field = mapFactory.getMap(ret.mapId);
+                if (ret.field == null) {
+                    ret.field = mapFactory.getMap(100000000);
+                }
+                int rMap = ret.field.getForcedReturnId();
+                if (rMap != MapConstants.NULL_MAP) {
+                    ret.field = mapFactory.getMap(rMap);
+                }
+                Portal portal = ret.field.getPortal(ret.savedSpawnPoint);
+                if (portal == null) {
+                    portal = ret.field.getPortal(0);
+                    ret.savedSpawnPoint = 0;
+                }
+                ret.setPosition(portal.getPosition());
+
+                int partyid = rs.getInt("party");
+                if (partyid >= 0) {
+                    MapleParty party = PartyService.getParty(partyid);
+                    if (party != null && party.getMemberById(ret.id) != null) {
+                        ret.mpc = party.getMemberById(ret.id);
+                        if (ret.mpc != null) {
+                            ret.party = party;
+                        }
+                    }
+                }
+
+                final String[] pets = rs.getString("pets").split(",");
+                for (int i = 0; i < ret.petStore.length; i++) {
+                    ret.petStore[i] = Byte.parseByte(pets[i]);
+                }
+            }
+        } catch (SQLException | NumberFormatException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void loadingCharacterLocations(Player ret, PreparedStatement ps, ResultSet rs, Connection con) {
+        try {
+            ps = con.prepareStatement("SELECT mapid FROM trocklocations WHERE characterid = ?");
+            ps.setInt(1, ret.getId());
+            rs = ps.executeQuery();
+            int r = 0;
+            while (rs.next()) {
+                ret.rocks[r] = rs.getInt("mapid");
+                r++;
+            }
+            while (r < 10) {
+                ret.rocks[r] = 999999999;
+                r++;
+            }
+            rs.close();
+            ps.close();
+
+            ps = con.prepareStatement("SELECT mapid FROM regrocklocations WHERE characterid = ?");
+            ps.setInt(1, ret.getId());
+            rs = ps.executeQuery();
+            r = 0;
+            while (rs.next()) {
+                ret.regrocks[r] = rs.getInt("mapid");
+                r++;
+            }
+            while (r < 5) {
+                ret.regrocks[r] = 999999999;
+                r++;
+            }
+            rs.close();
+            ps.close();
+
+            ps = con.prepareStatement("SELECT `locationtype`,`map` FROM savedlocations WHERE characterid = ?");
+            ps.setInt(1, ret.getId());
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                String locationType = rs.getString("locationtype");
+                int mapid = rs.getInt("map");
+                ret.savedLocations[SavedLocationType.valueOf(locationType).ordinal()] = mapid;
+            }
+            rs.close();
+            ps.close();
+
+        } catch (SQLException | NumberFormatException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void loadingCharacterAccountStats(Player ret, PreparedStatement ps, ResultSet rs, Connection con) {
+        try {
+            ps = con.prepareStatement("SELECT * FROM accounts WHERE id = ?");
+            ps.setInt(1, ret.getAccountID());
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                ret.getClient().setAccountName(rs.getString("name"));
+            }
+            rs.close();
+            ps.close();
+        } catch (SQLException | NumberFormatException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void loadingCharacterSkillsAndMacros(Player ret, PreparedStatement ps, ResultSet rs, Connection con) {
+        try {
+            ps = con.prepareStatement("SELECT skillid, skilllevel, masterlevel FROM skills WHERE characterid = ?");
+            ps.setInt(1, ret.getId());
+            rs = ps.executeQuery();
+            while (rs.next()) {
+                int 技能 = rs.getInt("skillid");
+                int 等级 = rs.getInt("skilllevel");
+                ret.skills.put(PlayerSkillFactory.getSkill(技能), new PlayerSkillEntry(等级, rs.getInt("masterlevel")));
+            }
+            rs.close();
+            ps.close();
+        } catch (SQLException | NumberFormatException e) {
+            try {
+                throw new SQLException("Failed to save keymap/macros of character " + ret.name, e);
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+
+    public static void loadingCharacterFame(Player ret, PreparedStatement ps, ResultSet rs, Connection con) {
+        try {
+            ps = con.prepareStatement("SELECT `characterid_to`,`when` FROM famelog WHERE characterid = ? AND DATEDIFF(NOW(),`when`) < 30");
+            ps.setInt(1, ret.getId());
+            rs = ps.executeQuery();
+            ret.lastFameTime = 0;
+            ret.lastMonthFameIDs = new ArrayList<>(31);
+            while (rs.next()) {
+                ret.lastFameTime = Math.max(ret.lastFameTime, rs.getTimestamp("when").getTime());
+                ret.lastMonthFameIDs.add(rs.getInt("characterid_to"));
+            }
+            rs.close();
+            ps.close();
+        } catch (SQLException | NumberFormatException e) {
+            e.printStackTrace();
+        }
+    }
+}
